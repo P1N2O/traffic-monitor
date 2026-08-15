@@ -1,0 +1,36 @@
+# Visual Studio / MSVC build output
+[Bb]in/
+[Oo]bj/
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+arm64/
+.vs/
+*.user
+*.suo
+*.VC.db
+*.VC.VC.opendb
+ipch/
+
+# Generated build artifacts
+*.obj
+*.pch
+*.pdb
+*.ilk
+*.log
+*.tlb
+*.tlh
+*.aps
+*.ncb
+*.sdf
+*.opensdf
+*.cachefile
+
+# Local / user config (never commit API keys or local settings)
+*.ini
+
+# IDE / OS
+.idea/
+.DS_Store
+Thumbs.db

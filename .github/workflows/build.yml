@@ -1,0 +1,131 @@
+name: OpenCode Go Usage Plugin Build
+
+# Standalone TrafficMonitor plugin build.
+# Produces OpenCodeGoUsage.dll (x64 and x86). On a v* tag it publishes the DLLs
+# as a public GitHub Release so users can download and drop them into their
+# TrafficMonitor "plugins" folder.
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+      inputs:
+        create_release:
+          description: 'Create a GitHub Release too?'
+          required: false
+          default: 'false'
+
+jobs:
+  build_x64:
+    name: Build OpenCodeGoUsage (x64)
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Add MSBuild to PATH
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Build (Release, x64)
+        run: msbuild OpenCodeGoUsage.sln -p:configuration=Release -p:platform=x64 -p:platformToolset=v143
+
+      - name: Upload OpenCodeGoUsage.dll (x64)
+        uses: actions/upload-artifact@v4
+        with:
+          name: OpenCodeGoUsage-x64
+          path: bin/Release/x64/OpenCodeGoUsage.dll
+          if-no-files-found: error
+
+  build_x86:
+    name: Build OpenCodeGoUsage (x86)
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Add MSBuild to PATH
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Build (Release, x86)
+        run: msbuild OpenCodeGoUsage.sln -p:configuration=Release -p:platform=x86 -p:platformToolset=v143
+
+      - name: Upload OpenCodeGoUsage.dll (x86)
+        uses: actions/upload-artifact@v4
+        with:
+          name: OpenCodeGoUsage-x86
+          path: bin/Release/Win32/OpenCodeGoUsage.dll
+          if-no-files-found: error
+
+  # ---------- Publish a public GitHub Release carrying both DLLs ----------
+  release:
+    name: Publish GitHub Release
+    needs: [build_x64, build_x86]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      # Make the git history (and tags) available so the changelog step can run
+      # git describe / git log. Full history is fetched to diff against the
+      # previous tag.
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # The two build jobs upload the same filename (OpenCodeGoUsage.dll), so
+      # download each into its own folder and rename by architecture.
+      - name: Download OpenCodeGoUsage DLL (x64)
+        uses: actions/download-artifact@v4
+        with:
+          name: OpenCodeGoUsage-x64
+          path: x64-asset
+
+      - name: Download OpenCodeGoUsage DLL (x86)
+        uses: actions/download-artifact@v4
+        with:
+          name: OpenCodeGoUsage-x86
+          path: x86-asset
+
+      - name: Tag version
+        shell: bash
+        run: echo "RELEASE_TAG=${GITHUB_REF#refs/tags/}" >> "$GITHUB_ENV"
+
+      # Give the two DLLs distinct downloadable names so users know which is which.
+      - name: Rename release assets
+        shell: bash
+        run: |
+          mv x64-asset/OpenCodeGoUsage.dll x64-asset/OpenCodeGoUsage-x64.dll
+          mv x86-asset/OpenCodeGoUsage.dll x86-asset/OpenCodeGoUsage-x86.dll
+
+      # Generate the release changelog from git history (between the previous tag
+      # and this one, or all commits for the first release) instead of static text.
+      - name: Generate changelog
+        id: changelog
+        shell: bash
+        run: |
+          PREV=$(git describe --abbrev=0 --tags "${{ env.RELEASE_TAG }}^" 2>/dev/null || true)
+          {
+            echo "## Changelog"
+            echo ""
+            if [ -n "$PREV" ]; then
+              git log --pretty=format:"- %s" "$PREV..HEAD"
+            else
+              git log --pretty=format:"- %s"
+            fi
+            echo ""
+            echo ""
+            echo "> Initial-release note: this is OpenCode Go Usage for TrafficMonitor."
+          } > CHANGELOG.md
+
+      - name: Publish Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          name: OpenCode Go Usage ${{ env.RELEASE_TAG }}
+          body_path: CHANGELOG.md
+          files: |
+            x64-asset/OpenCodeGoUsage-x64.dll
+            x86-asset/OpenCodeGoUsage-x86.dll
+          draft: false
+          prerelease: false
